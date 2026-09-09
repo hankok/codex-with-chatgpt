@@ -2,10 +2,12 @@
 name: codex-with-chatgpt
 description: >
   Use ChatGPT (web) as the planning and review brain for Codex coding sessions,
-  while Codex keeps full execution ownership. Use when the user says
-  "使用 Codex with ChatGPT ..." / "Set up Codex with ChatGPT" / "用 ChatGPT 规划",
-  when they ask to connect ChatGPT to the current workspace, disconnect it,
-  or run a task through the ChatGPT planning loop.
+  while Codex keeps full execution ownership. Active by default for substantive
+  coding, debugging, repository analysis, technical investigation, planning,
+  implementation, refactoring, testing, release, and review work even when the
+  user does not mention Codex with ChatGPT. Also use when the user explicitly
+  asks to connect ChatGPT to the current workspace, disconnect it, or run a
+  task through the ChatGPT planning loop.
 ---
 
 # Codex with ChatGPT
@@ -17,6 +19,17 @@ ChatGPT owns high-level reasoning: understanding, planning, review, debug strate
 The C2C Bridge gives ChatGPT read-only MCP access to the current workspace, so
 control messages between you and ChatGPT stay tiny (< 1 KB) — ChatGPT pulls
 whatever data it needs by itself.
+
+**Automatic invocation**
+
+Take ownership of the Codex-with-ChatGPT planning and review loop proactively
+for substantive workspace or repository work. Do not wait for the user to say
+"use Codex with ChatGPT" or to name this Skill. This includes codebase analysis,
+technical investigation, architecture/design planning, implementation,
+debugging, refactoring, tests, release operations, and code review. Preserve an
+explicit user request not to use ChatGPT; answer simple informational questions,
+translation, and trivial one-line formatting directly when the planning loop
+would add no value.
 
 **Golden rules**
 
