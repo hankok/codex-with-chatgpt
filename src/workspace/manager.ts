@@ -27,6 +27,11 @@ export class WorkspaceError extends Error {
 
 const CASE_INSENSITIVE = process.platform === "win32" || process.platform === "darwin";
 const normCase = (p: string): string => (CASE_INSENSITIVE ? p.toLowerCase() : p);
+const thisContains = (parent: string, child: string): boolean => {
+  const p = normCase(parent);
+  const c = normCase(child);
+  return c === p || c.startsWith(p + path.sep);
+};
 
 export interface ReadFileResult {
   path: string;
@@ -60,6 +65,11 @@ export interface ProjectConfig {
   maxIterations?: number;
 }
 
+export interface WorkspaceOptions {
+  /** Existing parent connection root whose authorization state is reused. */
+  authorizationRoot?: string;
+}
+
 function parseProjectConfig(value: unknown): ProjectConfig {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const raw = value as Record<string, unknown>;
@@ -83,12 +93,15 @@ const DEFAULT_MAX_BYTES = 256 * 1024;
 
 export class Workspace {
   readonly root: string;
+  readonly connectionRoot: string;
   readonly id: string;
+  readonly scopeId: string;
   readonly name: string;
+  readonly scopeName: string;
   readonly ignoreRules: IgnoreRules;
   readonly projectConfig: ProjectConfig;
 
-  constructor(rootInput: string) {
+  constructor(rootInput: string, opts: WorkspaceOptions = {}) {
     const resolved = path.resolve(rootInput);
     let real: string;
     try {
@@ -99,17 +112,32 @@ export class Workspace {
     if (!fs.statSync(real).isDirectory()) {
       throw new WorkspaceError("NOT_A_DIRECTORY", `Workspace root is not a directory: ${rootInput}`);
     }
+    const connectionResolved = path.resolve(opts.authorizationRoot ?? rootInput);
+    let connectionReal: string;
+    try {
+      connectionReal = fs.realpathSync.native(connectionResolved);
+    } catch {
+      throw new WorkspaceError("FILE_NOT_FOUND", `Workspace root does not exist: ${connectionResolved}`);
+    }
+    if (!fs.statSync(connectionReal).isDirectory()) {
+      throw new WorkspaceError("NOT_A_DIRECTORY", `Workspace root is not a directory: ${connectionResolved}`);
+    }
+    if (!thisContains(connectionReal, real)) {
+      throw new WorkspaceError("PATH_OUTSIDE_WORKSPACE", "Scoped workspace must be inside the connection workspace");
+    }
     this.root = real;
-    this.id = createHash("sha256").update(normCase(real)).digest("hex").slice(0, 12);
+    this.connectionRoot = connectionReal;
+    this.id = createHash("sha256").update(normCase(connectionReal)).digest("hex").slice(0, 12);
+    this.scopeId = createHash("sha256").update(normCase(real)).digest("hex").slice(0, 12);
     this.ignoreRules = new IgnoreRules(real);
     this.projectConfig = parseProjectConfig(readJsonIfExists<unknown>(path.join(real, ".c2c.json")));
-    this.name = this.projectConfig.name ?? path.basename(real);
+    this.scopeName = this.projectConfig.name ?? path.basename(real);
+    const connectionConfig = parseProjectConfig(readJsonIfExists<unknown>(path.join(connectionReal, ".c2c.json")));
+    this.name = connectionConfig.name ?? (connectionReal === real ? this.scopeName : path.basename(connectionReal));
   }
 
   private contains(candidate: string): boolean {
-    const r = normCase(this.root);
-    const c = normCase(candidate);
-    return c === r || c.startsWith(r + path.sep);
+    return thisContains(this.root, candidate);
   }
 
   /**
