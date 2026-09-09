@@ -96,7 +96,18 @@ describe("Windows background subprocess windowsHide: true (RED verification)", (
     expect(provisionCall?.options).toHaveProperty("windowsHide", true);
   });
 
-  it("6. src/cli/index.ts update-check runGit passes windowsHide: true", () => {
+  it("6. cloudflared login hides its child console", async () => {
+    const account = new ProcessCloudflaredAccount(process.execPath);
+    vi.spyOn(account, "hasCert").mockReturnValue(false);
+    await expect(account.login()).rejects.toThrow();
+    const loginCall = spawnCalls.find(
+      c => c.file === process.execPath && c.args[0] === "tunnel" && c.args[1] === "login"
+    );
+    expect(loginCall).toBeDefined();
+    expect(loginCall?.options).toHaveProperty("windowsHide", true);
+  });
+
+  it("7. src/cli/index.ts update-check runGit passes windowsHide: true", () => {
     const cliSource = fs.readFileSync(path.resolve("src/cli/index.ts"), "utf8");
     // Verify runGit under update-check in cli/index.ts includes windowsHide: true
     const updateCheckSection = cliSource.slice(cliSource.indexOf("// ---------------------------------------------------------------- update-check"));
@@ -104,7 +115,7 @@ describe("Windows background subprocess windowsHide: true (RED verification)", (
     expect(runGitSnippet).toContain("windowsHide: true");
   });
 
-  it("7. bin/c2c.js dev fallback hides the TypeScript runner console", () => {
+  it("8. bin/c2c.js dev fallback hides the TypeScript runner console", () => {
     const launcherSource = fs.readFileSync(path.resolve("bin/c2c.js"), "utf8");
     const fallback = launcherSource.slice(launcherSource.indexOf("const result = spawnSync"));
     expect(fallback).toContain("windowsHide: true");
