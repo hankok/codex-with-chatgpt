@@ -103,4 +103,10 @@ describe("Windows background subprocess windowsHide: true (RED verification)", (
     const runGitSnippet = updateCheckSection.slice(0, updateCheckSection.indexOf("program"));
     expect(runGitSnippet).toContain("windowsHide: true");
   });
+
+  it("7. bin/c2c.js dev fallback hides the TypeScript runner console", () => {
+    const launcherSource = fs.readFileSync(path.resolve("bin/c2c.js"), "utf8");
+    const fallback = launcherSource.slice(launcherSource.indexOf("const result = spawnSync"));
+    expect(fallback).toContain("windowsHide: true");
+  });
 });
