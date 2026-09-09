@@ -49,11 +49,11 @@ Detailed docs below are in English · 详细中文文档见 **[README.zh-CN.md](
 4. 安装 Skill：把仓库里的 skill/SKILL.md 复制到
    ~/.codex/skills/codex-with-chatgpt/SKILL.md，并把文件中
    "The codex-with-chatgpt checkout lives at:" 那一行的路径改成实际克隆路径。
-5. 首次配置：按 SKILL.md 里的 first-time setup 流程执行
-  （运行 c2c setup，用内置浏览器打开 ChatGPT 配置连接器并输入配对码）。
-   全程只用内置浏览器，禁止打开任何第三方浏览器。
-6. 只有遇到需要我登录（ChatGPT / Cloudflare）、验证码或两步验证时才叫我，
-   而且一次只告诉我一个动作。
+5. 首次配置：按 SKILL.md 里的 first-time setup 流程执行。先复用已有连接器；
+   只有连接器确实缺失或撤销时，才在明确需要时打开内置浏览器完成一次配置。
+   不打开第三方浏览器，也不复制浏览器登录会话。
+6. 只有遇到 Cloudflare 登录、连接器明确要求的 ChatGPT 授权、验证码或两步验证时
+   才叫我，而且一次只告诉我一个动作。已有健康连接器不需要 ChatGPT 网页登录。
 7. 完成后给我看 ✓ 清单，并确认文件读取测试通过。我不懂 MCP、OAuth、
    Tunnel、端口这些词，不要向我解释；出了问题先自己修。
 ```
@@ -75,11 +75,13 @@ I am a non-technical user — do everything yourself:
 4. Install the Skill: copy skill/SKILL.md to
    ~/.codex/skills/codex-with-chatgpt/SKILL.md, and update the line
    "The codex-with-chatgpt checkout lives at:" to the actual clone path.
-5. First-time setup: follow the SKILL.md "first-time setup" workflow
-   (run c2c setup, configure the ChatGPT connector in the BUILT-IN browser,
-   enter the pairing code). Never open a third-party browser.
-6. Only interrupt me for logins (ChatGPT / Cloudflare), CAPTCHAs or 2FA —
-   and give me exactly ONE action at a time.
+5. First-time setup: follow the SKILL.md "first-time setup" workflow. It first
+   reuses an existing healthy connector; only a genuinely missing or revoked
+   connector requires an explicit setup action in the built-in browser. Never
+   open a third-party browser or copy a browser login session.
+6. Only interrupt me for Cloudflare login, explicit connector authorization,
+   CAPTCHAs or 2FA — and give me exactly ONE action at a time. An existing
+   healthy connector must not trigger a ChatGPT web login.
 7. When done, show me the ✓ checklist and confirm the file-read test passed.
    I don't know what MCP, OAuth, tunnels or ports are. Don't explain them.
    If anything breaks, fix it yourself first.
@@ -118,8 +120,9 @@ Codex with ChatGPT
 Ready.
 ```
 
-The only steps that may need you: logging into ChatGPT (and, if you want a
-stable hostname, logging into Cloudflare once). A **new** workspace also asks
+The only steps that may need you are first-time/missing-connector authorization
+and, if you want a stable hostname, logging into Cloudflare once. A healthy
+existing connector does not require a ChatGPT web login. A **new** workspace also asks
 you to create a ChatGPT Project (collection) once — pick **project-only
 memory**, name it after the workspace. If the sidebar has no Projects row,
 hover **Chats**, open the … menu, and choose **Organize by project**. Codex

@@ -27,9 +27,13 @@ whatever data it needs by itself.
    field labels/values the user must enter, without explaining internals.
 3. The pairing code is the ONLY credential you may ever type into a browser.
    Never touch OAuth tokens, cookies, or session storage.
-4. If something fails, run `c2c doctor` and repair silently. Only involve the user
-   for logins, CAPTCHA, 2FA, explicit consent screens, or **guided manual
-   ChatGPT setup** below — and then give them ONE action.
+4. If something fails, run `c2c doctor` and repair silently. A successful
+   `workspace_info` call through the existing connector is sufficient proof that
+   ChatGPT can reach this workspace. Do not ask for a ChatGPT web login merely
+   because an in-app page is signed out. Only involve the user for Cloudflare
+   login, CAPTCHA, 2FA, explicit consent screens, or **guided manual ChatGPT
+   setup** when the connector is genuinely missing or revoked — and then give
+   them ONE action.
    Before the first ChatGPT connection on this machine, `c2c prefs --json`:
    - `setupMode` missing: tell the user exactly `setupChoicePrompt`, wait for
      「1」or「2」, then `c2c prefs set --setup-mode auto|manual --json`.
@@ -47,18 +51,19 @@ whatever data it needs by itself.
    These prefs are for this machine, not per workspace. Do not ask again
    on reconnect or a second repo. A new computer (empty prefs) asks/checks
    once.
-5. ALWAYS use the built-in in-app browser (iab) for every ChatGPT step.
-   Follow **In-app browser (ChatGPT)** below. NEVER Computer Use (no
-   screenshot-click). NEVER launch or control a third-party/external browser
-   (Chrome, Safari, Edge…), and never use `open <url>` to hand off to one.
-   - The ONLY exception: the user explicitly says the Cloudflare login must use
-     their own browser session — that single Cloudflare login step may go through
-     their browser; everything else stays in the built-in browser.
-   - If the user asks to run ChatGPT in their own browser, refuse politely and
-     explain: "Codex 需要持续调用 ChatGPT 和配置连接，这会频繁操作页面，可能影响
-     你浏览器的正常使用。ChatGPT 只能跑在内置浏览器里。" Only if the user replies
-     with an explicit "我愿意承担影响" may you proceed in their browser; otherwise
-     keep ChatGPT in the built-in browser, every time they ask.
+5. Prefer the existing connector/MCP path for every ChatGPT workspace operation.
+   Call `workspace_info` first. When it succeeds for the expected connection
+   and scope, do not initialize, foreground, or log in to an in-app browser,
+   and do not reuse its cookies or session storage. This is the normal path for
+   an already-configured workspace and must not pop up a window.
+   Use **In-app browser (ChatGPT)** only as an explicit UI fallback when the
+   connector is genuinely missing, revoked, or requires a user-visible consent
+   action. NEVER launch or control a third-party/external browser (Chrome,
+   Safari, Edge…), and never use `open <url>` to hand off to one.
+   - The only browser exception is the user's explicitly requested Cloudflare
+     login; that single step may use their browser session.
+   - If a required UI fallback shows a ChatGPT login wall, tell the user one
+     manual action only. Never open a popup or attempt to copy a login session.
 6. Conversation reuse depends on `c2c session --json` → `conversation.mode`
    (see Conversation management). Do not invent a second mode.
    - **long-chat** (legacy session file, or the user opted out): ONE ChatGPT
@@ -76,8 +81,10 @@ whatever data it needs by itself.
    settings directory. Run `c2c sandbox-allow --json` (idempotent). If it fails
    with EPERM / Operation not permitted, request elevated permissions and retry
    ONCE. After `{ "alreadyAllowed": true }` or `{ "added": true }`, stay silent.
-8. ChatGPT pages: only the URLs in **In-app browser (ChatGPT)**. Never start
-   from chatgpt.com and click through menus.
+8. If a UI fallback is required, ChatGPT pages may use only the URLs in
+   **In-app browser (ChatGPT)**. Never start from chatgpt.com and click through
+   menus. Do not open any page just to verify a connector that `workspace_info`
+   already verified.
 9. **Doctor gate.** After `c2c doctor --json`, do not `goto` ChatGPT and do not
    send `[C2C]` until local is green — except the reconnect settings pages when
    `chatgptRepair.needed` is true. Not green:
@@ -99,23 +106,21 @@ whatever data it needs by itself.
 Official skill: `control-in-app-browser`. These C2C rules override defaults
 that close the tab, hide the window, or stall on the settings page.
 
-1. **Surface.** Once per Codex session: `setupBrowserRuntime()`, then
-   `const iab = await agent.browsers.get("iab")`. Reuse `iab`. Do not re-read
-   `documentation()` if it is already bound. Never `getDefault()`, `getForUrl()`,
-   or Computer Use.
+1. **Surface.** This section is UI fallback only. Do not call
+   `setupBrowserRuntime()` or `agent.browsers.get("iab")` when the existing
+   connector already passes `workspace_info`. If a fallback is required, bind
+   one existing iab surface and never `getDefault()`, `getForUrl()`, or use
+   Computer Use.
 
 2. **One tab.** Create the ChatGPT tab once (`tabs.new()`). After that, only
    `tab.goto(...)` to switch URLs. If the tab still exists, claim it — never
    open a second ChatGPT tab. Do not `goto` the URL you are already on.
 
-3. **Foreground + keep (standby).** Right after opening or claiming the tab:
-   - `await (await iab.capabilities.get("visibility")).set(true)` — first-time
-     setup and ChatGPT chatting stay in front of the user so they can watch.
-   - `await tab.markHandoff()` immediately, then again at the start and end of
-     every turn. After setup succeeds or the C2C chat is open, also
-     `await tab.markDeliverable()`.
-   Never close this tab. Finished, waiting for the user, or timed out: leave it
-   marked (standby). Do not let default turn cleanup close it.
+3. **No automatic foregrounding.** Never call the visibility capability merely
+   to perform connector reuse, and never create an OS-visible popup. If the user
+   explicitly chooses the UI fallback, keep the existing tab available for that
+   action and use `markHandoff` / `markDeliverable` as needed. Never close a
+   user-owned tab or copy its cookies/session storage.
 
 4. **URLs only** (same tab, `goto` — never hunt menus):
    - 开发人员模式: `https://chatgpt.com/#settings/Security`
@@ -259,8 +264,15 @@ Speak only of 临时地址 / 固定域名 / 登录 Cloudflare.
      `接下来用手动教学配置。一次只需要做一个操作。`
      Do not say 自动配置没有成功.
    - `setupMode: "auto"`: continue with step 5. Keep the two-failure fallback.
-5. Open ChatGPT on the ONE iab tab (see **In-app browser**). Foreground +
-   markHandoff immediately. Same tab, `goto` only:
+5. First call the existing connector's `workspace_info`. If it returns the
+   expected connection and scope, skip all browser actions, pairing UI, and
+   login. The existing connector is already configured; continue with the
+   saved project/session metadata and the MCP file-read test.
+
+   Only when that probe fails because the connector is missing, revoked, or
+   needs explicit consent, open ChatGPT on the ONE iab tab (see **In-app
+   browser**) and use the following settings URLs. Do not foreground a window
+   automatically:
    - 开发人员模式: skip `https://chatgpt.com/#settings/Security` when
      `developerModeEnabled` is true. Otherwise open it, enable 开发人员模式
      ("Developer mode") if it is off, then `c2c prefs set --developer-mode`.
@@ -284,11 +296,14 @@ Speak only of 临时地址 / 固定域名 / 登录 Cloudflare.
      Fill the known form in one script when you can. Then Connect / Authorize
      and type the pairing code. As soon as it shows Connected / authorized /
      pairing accepted, continue — do NOT wait for 8 tools on this page.
-6. Same tab: open the first C2C chat per **Conversation management**
-   (Project collection for a new workspace; `https://chatgpt.com/` only
-   in long-chat). Confirm Chat mode per **In-app browser** §7 (if it is Work,
-   open a new Chat conversation instead). Send the boot prompt from
-   `docs/protocol.md` §Boot Prompt, then (same chat) send:
+6. When the existing connector probe succeeded, do not open a ChatGPT page just
+   to send a boot prompt or validate the same connector. Treat the MCP probe as
+   the file-read test and reuse the saved Project/session identity. If a UI
+   fallback was required, use the same tab to open the first C2C chat per
+   **Conversation management** (Project collection for a new workspace;
+   `https://chatgpt.com/` only in long-chat). Confirm Chat mode per **In-app
+   browser** §7 (if it is Work, open a new Chat conversation instead). Send the
+   boot prompt from `docs/protocol.md` § Boot Prompt, then (same chat) send:
    `Use the "<connectorName>" connector: call workspace_info and read hello-style top-level file. Reply with the workspace name and scope name.`
    Confirm the connection name matches `workspaceName` and, when present, the
    scope name matches the project folder (wait per **In-app browser** §8).
@@ -308,8 +323,11 @@ Codex with ChatGPT
 Ready.
 ```
 
-If a login wall appears (ChatGPT, Cloudflare): stop, tell the user the ONE thing
-to do ("请登录 ChatGPT，完成后告诉我'好了'"), then continue.
+If the existing connector probe succeeds, a ChatGPT login wall is irrelevant:
+do not ask for login and do not open a window. If a connector-creation or
+explicit-consent fallback is genuinely required and its UI shows a login wall,
+stop and give the user exactly one manual action; do not automate or copy a
+browser login session.
 
 ### Guided manual ChatGPT setup
 
@@ -515,9 +533,18 @@ ChatGPT's replies are expected to be substantive (see step 3). Docs: `docs/proto
    reclaim**, then doctor again and only continue when the gate is green.
    Generate task id: `c2c_` + 4 random hex chars — unless a checkpoint already
    has one (reuse that id; do not mint a second task).
-1. `c2c session -w <workspace> --json`. Open ChatGPT on the same iab tab
-   per **Conversation management** for `conversation.mode` (foreground +
-   markHandoff). long-chat: saved chat, or `https://chatgpt.com/` if none.
+1. After the Doctor gate, call the existing connector's `workspace_info` and
+   verify both the connection identity and current scope. If it succeeds,
+   treat the connector as ready and do not open or foreground the in-app
+   browser. `c2c session -w <workspace> --json` is still used for durable
+   project/chat metadata, but it must not trigger a web login. If the saved
+   ChatGPT page is unavailable or signed out while MCP is healthy, continue
+   using the connector and do not ask the user to log in.
+
+   Only when the connector probe fails for a real missing/revoked/consent
+   reason, open ChatGPT on the same iab tab per **Conversation management** for
+   `conversation.mode` (without automatic foregrounding). long-chat: saved chat,
+   or `https://chatgpt.com/` if none.
    project: this thread's chat URL, or the collection page for a new chat,
    or **Bind Project** if `projectReady` is false. On a NEW conversation
    confirm Chat mode (**In-app browser** §7), then send the boot prompt from
@@ -545,7 +572,12 @@ ChatGPT's replies are expected to be substantive (see step 3). Docs: `docs/proto
    - `BLOCKED`: surface ChatGPT's reason; do not INIT.
    Never re-pair, never recreate the connector, and never rewrite Project
    instructions just to resume.
-2. Send INIT with the user's goal (skip when the checkpoint says not to):
+2. Send INIT with the user's goal (skip when the checkpoint says not to). When
+   the connector is healthy but no ChatGPT UI session is available, do not
+   manufacture a browser login or popup: use the connector MCP tools for the
+   workspace inspection/review path and record the local checkpoint normally.
+   Send the browser control message only when the UI fallback is actually
+   available:
 
 ```
 [C2C]
@@ -563,8 +595,9 @@ Produce a C2C PLAN message.
 
    Then:
    `c2c session set -w <ws> --task <id> --iteration 0 --state INIT --protocol-state INIT --waiting-for GPT_PLAN --goal "<short goal>" --next-step "wait for PLAN"`
-3. Wait for ChatGPT's `STATE: PLAN` reply (**In-app browser** §8 — short DOM
-   checks, same tab; do not treat a 5-minute browser timeout as failure).
+3. Wait for ChatGPT's `STATE: PLAN` reply (**In-app browser** §8) only when
+   the UI fallback is active; use short DOM checks in the same tab and do not
+   treat a 5-minute browser timeout as failure.
    Read GOAL/ACTIONS/TESTS/SUCCESS_CRITERIA.
    A good PLAN also carries RATIONALE and concrete natural-language edit
    suggestions (which file, what to change, why). If the reply is a bare
@@ -645,7 +678,8 @@ the previous public address is gone. Doctor already started a new one.
    follow-up doctor is green. Never "try a message first to see if it works".
    Reuse `c2c prefs --json`. Do not re-ask setup mode. If `setupMode` is
    `manual`, use **Guided manual ChatGPT setup** (chosen) instead of automating.
-2. Same one iab tab as setup (foreground + markHandoff). Settings URLs only
+2. Same one iab tab as setup (without automatic foregrounding; use
+   `markHandoff` only while the explicit UI fallback is active). Settings URLs only
    until Connected — never hunt menus:
    - 开发人员模式: skip `https://chatgpt.com/#settings/Security` when
      `developerModeEnabled` is true. If create/delete then says developer
