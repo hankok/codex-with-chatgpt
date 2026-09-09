@@ -6,6 +6,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { startBridge, type Bridge } from "../src/bridge/server.js";
 import { appendExecutionRecord } from "../src/execution/records.js";
 import { saveExecutionOutput } from "../src/execution/output.js";
+import { Workspace } from "../src/workspace/manager.js";
 import { makeTmpDir, cleanup, write, makeGitRepo, git, isolateStateDir } from "./helpers.js";
 
 let root: string;
@@ -123,6 +124,51 @@ describe("MCP tools over Streamable HTTP", () => {
     expect(info.frameworks).toContain("React");
     expect(info.git.isRepo).toBe(true);
     expect(info.git.branch).toBe("main");
+  });
+
+  it("reuses parent authorization while scoping MCP to a nested repository", async () => {
+    const parent = makeTmpDir("mcp-scope-parent");
+    const child = path.join(parent, "repo");
+    const sibling = path.join(parent, "sibling");
+    fs.mkdirSync(child, { recursive: true });
+    fs.mkdirSync(sibling, { recursive: true });
+    makeGitRepo(child);
+    write(child, "package.json", JSON.stringify({ name: "scoped-repo" }));
+    write(sibling, "outside.txt", "outside\n");
+    const scopedBridge = await startBridge({
+      workspaceRoot: child,
+      authorizationRoot: parent,
+      port: 0,
+      persistRuntime: false,
+      authStoreFile: path.join(makeTmpDir("mcp-scope-auth"), "store.json"),
+    });
+    const scopedTokens = scopedBridge.authStore.issueTokens({
+      clientId: "scoped-client",
+      scopes: ["workspace.read", "git.read"],
+    });
+    const scopedClient = new Client({ name: "scoped-client", version: "1.0.0" });
+    await scopedClient.connect(
+      new StreamableHTTPClientTransport(new URL(`${scopedBridge.localBaseUrl()}/mcp`), {
+        requestInit: { headers: { authorization: `Bearer ${scopedTokens.accessToken}` } },
+      })
+    );
+    try {
+      const info = structuredJsonOf<{ workspaceId: string; scopeId: string; scopeName: string; projectType: string }>(
+        await scopedClient.callTool({ name: "workspace_info", arguments: {} })
+      );
+      expect(info.workspaceId).toBe(new Workspace(parent).id);
+      expect(info.scopeId).toBe(new Workspace(child).id);
+      expect(info.scopeName).toBe("repo");
+      expect(info.projectType).toBe("node");
+
+      const denied = await scopedClient.callTool({ name: "read_file", arguments: { path: "../sibling/outside.txt" } });
+      expect(denied.isError).toBe(true);
+      expect(textOf(denied)).toContain("PATH_OUTSIDE_WORKSPACE");
+    } finally {
+      await scopedClient.close();
+      await scopedBridge.close();
+      cleanup(parent);
+    }
   });
 
   it("read_file returns hello.txt", async () => {

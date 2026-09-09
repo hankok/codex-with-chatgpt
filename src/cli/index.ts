@@ -7,6 +7,7 @@ import { startBridge } from "../bridge/server.js";
 import { findBridgeObservation, findLiveBridge, type RuntimeState } from "../bridge/runtime.js";
 import { adminFetch, ensureBridge, stopBridge } from "../process/daemon.js";
 import { Workspace } from "../workspace/manager.js";
+import { resolveWorkspaceContext } from "../workspace/context.js";
 import { AuthStore } from "../auth/store.js";
 import { detectTunnelBinaries } from "../tunnel/detect.js";
 import {
@@ -66,7 +67,12 @@ const check = (msg: string): void => say(`✓ ${msg}`);
 const cross = (msg: string): void => say(`✗ ${msg}`);
 
 function resolveWorkspace(option?: string): string {
-  return path.resolve(option ?? process.cwd());
+  return resolveWorkspaceContext(path.resolve(option ?? process.cwd())).scopeRoot;
+}
+
+function workspaceFor(option?: string): Workspace {
+  const context = resolveWorkspaceContext(path.resolve(option ?? process.cwd()));
+  return new Workspace(context.scopeRoot, { authorizationRoot: context.connectionRoot });
 }
 
 function parseInteger(value: string): number {
@@ -179,6 +185,8 @@ interface PairingResponse {
 interface AdminInfo {
   workspaceId: string;
   workspaceName: string;
+  scopeId?: string;
+  scopeName?: string;
   workspaceRoot: string;
   port: number;
   publicUrl: string | null;
@@ -223,11 +231,13 @@ program
   .command("serve", { hidden: true })
   .description("Run the bridge in the foreground (internal)")
   .requiredOption("--workspace <path>")
+  .option("--authorization-root <path>", "existing parent connection root")
   .option("--port <port>", "preferred port")
-  .action(async (opts: { workspace: string; port?: string }) => {
+  .action(async (opts: { workspace: string; authorizationRoot?: string; port?: string }) => {
     const logger = new Logger({ name: "bridge", console: true });
     const bridge = await startBridge({
       workspaceRoot: resolveWorkspace(opts.workspace),
+      authorizationRoot: opts.authorizationRoot,
       port: opts.port ? parseInt(opts.port, 10) : undefined,
       logger,
     });
@@ -381,7 +391,7 @@ program
   .option("--json", "machine-readable output", false)
   .action(async (opts: { workspace?: string; json: boolean }) => {
     const root = resolveWorkspace(opts.workspace);
-    const workspace = new Workspace(root);
+    const workspace = workspaceFor(opts.workspace);
     const observation = await findBridgeObservation(workspace.id);
     if (observation.state === "unknown") {
       if (opts.json) {
@@ -451,7 +461,7 @@ program
     // Workspace
     let workspace: Workspace | null = null;
     try {
-      workspace = new Workspace(root);
+      workspace = workspaceFor(opts.workspace);
       report.workspace = { ok: true, detail: workspace.name };
     } catch (error) {
       report.workspace = { ok: false, detail: (error as Error).message };
@@ -729,7 +739,7 @@ program
   .option("-w, --workspace <path>")
   .action(async (opts: { workspace?: string }) => {
     const root = resolveWorkspace(opts.workspace);
-    const workspace = new Workspace(root);
+    const workspace = workspaceFor(opts.workspace);
     const runtime = await findLiveBridge(workspace.id);
     if (runtime) {
       await adminFetch(runtime, "POST", "/admin/revoke-all");
@@ -749,7 +759,7 @@ program
   .option("-n, --lines <n>", "number of lines", "50")
   .option("--verbose", "include debug detail", false)
   .action((opts: { workspace?: string; lines: string; verbose: boolean }) => {
-    const workspace = new Workspace(resolveWorkspace(opts.workspace));
+    const workspace = workspaceFor(opts.workspace);
     const candidates = [
       path.join(getStateDir(), "logs", "bridge.log"),
       path.join(getStateDir(), "logs", `bridge-${workspace.id}.out.log`),
@@ -771,7 +781,7 @@ program
   .option("-w, --workspace <path>")
   .option("--json", "machine-readable output", false)
   .action((opts: { workspace?: string; json: boolean }) => {
-    const workspace = new Workspace(resolveWorkspace(opts.workspace));
+    const workspace = workspaceFor(opts.workspace);
     const project = workspace.detectProject();
     const data = { workspaceId: workspace.id, name: workspace.name, root: workspace.root, ...project };
     if (opts.json) say(JSON.stringify(data));
@@ -878,7 +888,7 @@ session
   .option("-w, --workspace <path>")
   .option("--json", "machine-readable output", false)
   .action((opts: { workspace?: string; json: boolean }) => {
-    const workspace = new Workspace(resolveWorkspace(opts.workspace));
+    const workspace = workspaceFor(opts.workspace);
     const saved = readSession(workspace.id);
     const conversation = resolveConversation(saved);
     if (opts.json) say(JSON.stringify({ ok: true, session: saved, conversation }));
@@ -937,7 +947,7 @@ session
       nextStep?: string;
       clearCheckpoint: boolean;
     }) => {
-      const workspace = new Workspace(resolveWorkspace(opts.workspace));
+      const workspace = workspaceFor(opts.workspace);
       const modeRaw = opts.mode?.trim().toLowerCase();
       if (modeRaw && modeRaw !== "long-chat" && modeRaw !== "project") {
         throw new Error("mode must be long-chat or project");
@@ -990,7 +1000,7 @@ session
   .description("Forget the current ChatGPT chat (Project binding is kept)")
   .option("-w, --workspace <path>")
   .action((opts: { workspace?: string }) => {
-    const workspace = new Workspace(resolveWorkspace(opts.workspace));
+    const workspace = workspaceFor(opts.workspace);
     const result = clearChatPointer(workspace.id);
     if (!result.cleared) say("尚未记录 ChatGPT 会话。");
     else if (result.keptProject) check("已清除当前对话，合集绑定仍保留");
@@ -1076,7 +1086,7 @@ program
       outputFile?: string;
       exitCode?: number;
     }) => {
-      const workspace = new Workspace(resolveWorkspace(opts.workspace));
+    const workspace = workspaceFor(opts.workspace);
       const changed = parseChangedFiles(opts.changedFiles);
       let outputId: number | undefined;
       let outputAvailable = false;
@@ -1122,7 +1132,7 @@ tunnelCmd
   .option("--json", "machine-readable output", false)
   .action((opts: { workspace?: string; zone?: string; json: boolean }) => {
     try {
-      const workspace = new Workspace(resolveWorkspace(opts.workspace));
+      const workspace = workspaceFor(opts.workspace);
       const payload = tunnelChoicePayload(workspace, opts.zone);
       if (opts.json) {
         say(JSON.stringify(payload));
@@ -1147,7 +1157,7 @@ tunnelCmd
   .action(async (opts: { mode: string; workspace?: string; zone?: string; hostname?: string; json: boolean }) => {
     const root = resolveWorkspace(opts.workspace);
     try {
-      const workspace = new Workspace(root);
+    const workspace = workspaceFor(opts.workspace);
       const mode = opts.mode.trim().toLowerCase();
       const previous = readTunnelState(workspace.id);
       if (mode === "quick") {

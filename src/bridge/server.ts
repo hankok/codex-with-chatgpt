@@ -31,6 +31,8 @@ function tunnelForWorkspace(workspaceId: string, logger: Logger): TunnelProvider
 
 export interface BridgeOptions {
   workspaceRoot: string;
+  /** Existing parent connection root whose auth/tunnel/session state is reused. */
+  authorizationRoot?: string;
   port?: number;
   host?: string;
   logger?: Logger;
@@ -81,7 +83,7 @@ function listen(app: express.Express, host: string, preferredPort: number): Prom
 
 export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
   const logger = opts.logger ?? nullLogger;
-  const workspace = new Workspace(opts.workspaceRoot);
+  const workspace = new Workspace(opts.workspaceRoot, { authorizationRoot: opts.authorizationRoot });
   const host = opts.host ?? DEFAULT_HOST;
   if (host !== "127.0.0.1" && host !== "::1" && host !== "localhost") {
     throw new Error("The bridge only binds to loopback addresses. Public exposure goes through the tunnel.");
@@ -163,6 +165,8 @@ export async function startBridge(opts: BridgeOptions): Promise<Bridge> {
       version: VERSION,
       workspaceId: workspace.id,
       workspaceName: workspace.name,
+      scopeId: workspace.scopeId,
+      scopeName: workspace.scopeName,
       workspaceRoot: workspace.root,
       port,
       publicUrl: publicBaseUrl,

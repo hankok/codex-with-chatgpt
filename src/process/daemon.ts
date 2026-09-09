@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { ensureDir, getStateDir } from "../config/paths.js";
 import { findBridgeObservation, findLiveBridge, probeBridge, readRuntimeState, type RuntimeState } from "../bridge/runtime.js";
 import { Workspace } from "../workspace/manager.js";
+import { resolveWorkspaceContext } from "../workspace/context.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -30,9 +31,16 @@ export interface EnsureBridgeResult {
  * otherwise spawns a detached daemon and waits for it to become healthy.
  */
 export async function ensureBridge(workspaceRoot: string, opts: { port?: number } = {}): Promise<EnsureBridgeResult> {
-  const workspace = new Workspace(workspaceRoot);
-  const observation = await findBridgeObservation(workspace.id);
-  if (observation.state === "healthy") return { runtime: observation.runtime, spawned: false };
+  const context = resolveWorkspaceContext(workspaceRoot);
+  const workspace = new Workspace(context.scopeRoot, { authorizationRoot: context.connectionRoot });
+  let observation = await findBridgeObservation(workspace.id);
+  if (observation.state === "healthy") {
+    if (path.resolve(observation.runtime.workspaceRoot) === path.resolve(workspace.root)) {
+      return { runtime: observation.runtime, spawned: false };
+    }
+    await stopBridge(workspaceRoot);
+    observation = await findBridgeObservation(workspace.id);
+  }
   if (observation.state === "unknown") {
     throw new Error(
       `Bridge state is uncertain (${observation.reason}); refusing to start another bridge.`
@@ -52,7 +60,15 @@ export async function ensureBridge(workspaceRoot: string, opts: { port?: number 
   const { cmd, args } = cliEntry();
   const child = spawn(
     cmd,
-    [...args, "serve", "--workspace", workspace.root, ...(opts.port ? ["--port", String(opts.port)] : [])],
+    [
+      ...args,
+      "serve",
+      "--workspace",
+      workspace.root,
+      "--authorization-root",
+      workspace.connectionRoot,
+      ...(opts.port ? ["--port", String(opts.port)] : []),
+    ],
     {
       detached: true,
       stdio: ["ignore", out, out],
@@ -100,7 +116,8 @@ export async function adminFetch<T = unknown>(
 }
 
 export async function stopBridge(workspaceRoot: string): Promise<boolean> {
-  const workspace = new Workspace(workspaceRoot);
+  const context = resolveWorkspaceContext(workspaceRoot);
+  const workspace = new Workspace(context.scopeRoot, { authorizationRoot: context.connectionRoot });
   const runtime = readRuntimeState(workspace.id);
   if (!runtime) return false;
   const healthy = await probeBridge(runtime.port);
