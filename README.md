@@ -142,6 +142,14 @@ address — same features, just a slower repair.
 
 Credentials stay in the OS app state directory, not in the project.
 
+### Nested project folders
+
+If a project lives inside a folder that already has a C2C connection, pass the
+project folder itself with `-w`. C2C reuses the nearest configured parent
+connector, Cloudflare hostname, and ChatGPT session, while limiting file reads,
+search, Git inspection, and project detection to the nested project. It does
+not create a second connector or ask you to reinstall the existing one.
+
 ## How it works
 
 ```
@@ -182,9 +190,10 @@ Credentials stay in the OS app state directory, not in the project.
 
 - **Read-only by construction**: write/delete/shell/commit tools simply do not
   exist on the server. No prompt injection can enable them.
-- **One workspace = one boundary**: every token is bound to a single workspace;
-  path containment uses canonical realpaths (symlink/`../`/absolute-path escapes
-  are all blocked and tested).
+- **One connection workspace = one authorization boundary**: every token is
+  bound to the configured connection workspace. A nested project can use a
+  narrower persisted content scope inside that boundary; canonical realpaths
+  still block symlink/`../`/absolute-path escapes.
 - **Sensitive files never leave**: `.env*`, keys, SSH, credentials are denied by
   default (`.env.example` allowed); `.c2cignore` adds your own rules.
 - **Knowing the URL grants nothing**: the public MCP endpoint requires OAuth 2.1

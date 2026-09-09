@@ -2,9 +2,11 @@
 
 ## Trust boundaries
 
-1. **Workspace root** is the smallest authorization boundary. One bridge serves
-   exactly one workspace; every token is bound to `workspace_id`; a token for
-   project A returns 403 on project B's bridge.
+1. **Connection root** is the authorization boundary. One bridge serves one
+   configured connection workspace and every token is bound to its
+   `workspace_id`. A nested project may use a narrower persisted scope inside
+   that connection root; its canonical path boundary blocks sibling and parent
+   access even though the connector is reused.
 2. **Workspace content is untrusted.** README, comments, diffs may contain
    prompt injection. Every MCP tool description carries an explicit warning and
    tools never grant capabilities based on file content.
@@ -43,7 +45,8 @@ Access tokens: 1 hour. Refresh tokens: 30 days, rotated. All tokens bound to
 State lives under the OS-convention app dir
 (`~/Library/Application Support/codex-with-chatgpt` on macOS), directories 0700,
 files 0600. Named-hostname preference and tunnel metadata live there too
-(`tunnels/<workspaceId>.json`) — never in the project. Only SHA-256 hashes of
+(`tunnels/<workspaceId>.json` and `scopes/<scopeId>.json`) — never in the project.
+Only SHA-256 hashes of
 tokens are persisted — a stolen state file does not yield usable bearer tokens.
 
 **V1 limitation**: client registrations and token hashes are file-based rather

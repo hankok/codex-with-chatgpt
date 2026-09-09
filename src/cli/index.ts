@@ -5,7 +5,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { startBridge } from "../bridge/server.js";
 import { findBridgeObservation, findLiveBridge, type RuntimeState } from "../bridge/runtime.js";
-import { adminFetch, ensureBridge, stopBridge } from "../process/daemon.js";
+import { adminFetch, ensureBridge, runtimeServesWorkspace, stopBridge } from "../process/daemon.js";
 import { Workspace } from "../workspace/manager.js";
 import { resolveWorkspaceContext } from "../workspace/context.js";
 import { AuthStore } from "../auth/store.js";
@@ -147,6 +147,10 @@ function tunnelChoicePayload(workspace: Workspace, zoneHint?: string): Record<st
   const zone = parseZoneInput(zoneHint ?? "") ?? state.zone ?? null;
   return {
     ok: true,
+    workspaceId: workspace.id,
+    scopeId: workspace.scopeId,
+    workspaceName: workspace.name,
+    scopeName: workspace.scopeName,
     needsChoice: needsTunnelChoice(state),
     preference: state.preference,
     loggedIn: hasCloudflaredCert(),
@@ -271,7 +275,18 @@ program
           })
         : readLastEndpoint(info.workspaceId)?.connectorName;
       if (opts.json) {
-        say(JSON.stringify({ ok: true, port: runtime.port, workspaceId: info.workspaceId, mcpUrl, connectorName }));
+        say(
+          JSON.stringify({
+            ok: true,
+            port: runtime.port,
+            workspaceId: info.workspaceId,
+            scopeId: info.scopeId ?? null,
+            workspaceName: info.workspaceName,
+            scopeName: info.scopeName ?? info.workspaceName,
+            mcpUrl,
+            connectorName,
+          })
+        );
         return;
       }
       check(`当前项目已识别（${info.workspaceName}）`);
@@ -323,6 +338,8 @@ program
             ok: true,
             workspaceId: info.workspaceId,
             workspaceName: info.workspaceName,
+            scopeId: info.scopeId ?? null,
+            scopeName: info.scopeName ?? info.workspaceName,
             connectorName,
             mcpUrl: mcpUrl ?? `http://127.0.0.1:${runtime.port}/mcp`,
             local: mcpUrl === null,
@@ -407,6 +424,18 @@ program
       return;
     }
     const runtime = observation.runtime;
+    if (!runtimeServesWorkspace(runtime, workspace.root)) {
+      const mismatch = {
+        ok: false,
+        running: true,
+        scopeMismatch: true,
+        expectedRoot: workspace.root,
+        ...runtime,
+      };
+      if (opts.json) say(JSON.stringify(mismatch));
+      else cross(`Bridge 正在运行，但范围不是当前项目（${workspace.root}）。请运行 c2c doctor 修复。`);
+      return;
+    }
     const info = await adminFetch<AdminInfo>(runtime, "GET", "/admin/info");
     if (opts.json) {
       say(JSON.stringify({ ok: true, running: true, ...info }));
@@ -473,7 +502,20 @@ program
     if (workspace) {
       const observation = await findBridgeObservation(workspace.id);
       if (observation.state === "healthy") {
-        runtime = observation.runtime;
+        if (runtimeServesWorkspace(observation.runtime, workspace.root)) {
+          runtime = observation.runtime;
+        } else if (opts.fix) {
+          try {
+            await stopBridge(root);
+            await new Promise((resolve) => setTimeout(resolve, 400));
+            runtime = (await ensureBridge(root)).runtime;
+            results.push("已切换到当前项目范围");
+          } catch (error) {
+            report.bridge = { ok: false, detail: (error as Error).message };
+          }
+        } else {
+          report.bridge = { ok: false, detail: `运行中的 Bridge 范围不是当前项目（${workspace.root}）` };
+        }
       } else if (observation.state === "unknown") {
         bridgeUnknown = true;
         report.bridge = { ok: false, detail: `状态无法确认（${observation.reason}），未自动修复` };
@@ -783,7 +825,14 @@ program
   .action((opts: { workspace?: string; json: boolean }) => {
     const workspace = workspaceFor(opts.workspace);
     const project = workspace.detectProject();
-    const data = { workspaceId: workspace.id, name: workspace.name, root: workspace.root, ...project };
+    const data = {
+      workspaceId: workspace.id,
+      scopeId: workspace.scopeId,
+      name: workspace.name,
+      scopeName: workspace.scopeName,
+      root: workspace.root,
+      ...project,
+    };
     if (opts.json) say(JSON.stringify(data));
     else {
       say(`Workspace：${data.name}（${data.workspaceId}）`);
@@ -1086,7 +1135,7 @@ program
       outputFile?: string;
       exitCode?: number;
     }) => {
-    const workspace = workspaceFor(opts.workspace);
+      const workspace = workspaceFor(opts.workspace);
       const changed = parseChangedFiles(opts.changedFiles);
       let outputId: number | undefined;
       let outputAvailable = false;

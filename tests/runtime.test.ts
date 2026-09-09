@@ -8,7 +8,7 @@ import {
   writeRuntimeState,
   type RuntimeState,
 } from "../src/bridge/runtime.js";
-import { ensureBridge } from "../src/process/daemon.js";
+import { ensureBridge, runtimeServesWorkspace } from "../src/process/daemon.js";
 import { SERVICE_NAME, VERSION } from "../src/version.js";
 import { Workspace } from "../src/workspace/manager.js";
 import { cleanup, isolateStateDir, makeTmpDir, write } from "./helpers.js";
@@ -111,5 +111,14 @@ describe("findBridgeObservation", () => {
     } finally {
       await bridge.close();
     }
+  });
+});
+
+describe("runtime workspace scope", () => {
+  it("compares runtime and requested roots case-insensitively on Windows", () => {
+    expect(runtimeServesWorkspace({ workspaceRoot: "D:\\GitHub\\Repo" }, "d:\\github\\repo")).toBe(
+      process.platform === "win32"
+    );
+    expect(runtimeServesWorkspace({ workspaceRoot: "D:\\GitHub\\Repo" }, "D:\\GitHub\\Other")).toBe(false);
   });
 });

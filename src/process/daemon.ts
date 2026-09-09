@@ -26,6 +26,17 @@ export interface EnsureBridgeResult {
   spawned: boolean;
 }
 
+export function runtimeServesWorkspace(
+  runtime: Pick<RuntimeState, "workspaceRoot">,
+  workspaceRoot: string
+): boolean {
+  const runtimeRoot = path.resolve(runtime.workspaceRoot);
+  const expectedRoot = path.resolve(workspaceRoot);
+  return process.platform === "win32"
+    ? runtimeRoot.toLowerCase() === expectedRoot.toLowerCase()
+    : runtimeRoot === expectedRoot;
+}
+
 /**
  * Ensure a bridge is running for the workspace. Reuses a live instance,
  * otherwise spawns a detached daemon and waits for it to become healthy.
@@ -35,7 +46,7 @@ export async function ensureBridge(workspaceRoot: string, opts: { port?: number 
   const workspace = new Workspace(context.scopeRoot, { authorizationRoot: context.connectionRoot });
   let observation = await findBridgeObservation(workspace.id);
   if (observation.state === "healthy") {
-    if (path.resolve(observation.runtime.workspaceRoot) === path.resolve(workspace.root)) {
+    if (runtimeServesWorkspace(observation.runtime, workspace.root)) {
       return { runtime: observation.runtime, spawned: false };
     }
     await stopBridge(workspaceRoot);

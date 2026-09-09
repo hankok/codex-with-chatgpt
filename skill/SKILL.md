@@ -172,7 +172,10 @@ that close the tab, hide the window, or stall on the settings page.
   All commands support `--json` for parsing.
 - If the checkout has no `node_modules` or no `dist/`, first run
   `corepack pnpm install && corepack pnpm build` inside it.
-- Always pass `-w <workspace root>` (the project the user is working on, NOT the c2c repo).
+- Always pass `-w <workspace root>` for the actual project directory the user is
+  working on, NOT the c2c repo or a broad parent folder. If that project is
+  nested under an already-configured parent, the CLI automatically reuses the
+  nearest parent connection while scoping MCP file/Git access to the project.
 
 ## Daily update check
 
@@ -239,8 +242,9 @@ Speak only of 临时地址 / 固定域名 / 登录 Cloudflare.
    `sandbox-allow` edits Codex `config.toml` only — it adds C2C's state directory
    to `[sandbox_workspace_write].writable_roots` so later chats can write logs
    without elevation. If the write is denied, request approval and retry once.
-   → returns `{ mcpUrl, pairingCode, workspaceName, connectorName, ... }`.
-   `connectorName` is this workspace's plugin title (legacy installs stay
+   → returns `{ mcpUrl, pairingCode, workspaceName, scopeName, connectorName, ... }`.
+   `workspaceName` is the existing connection identity; `scopeName` is the
+   nested project currently being reviewed. `connectorName` is this workspace's plugin title (legacy installs stay
    `Codex with ChatGPT`; additional workspaces get `Codex with ChatGPT · <name>`).
    Pairing codes expire in ~5 minutes: run `c2c pair --json` for a fresh one if you're slow.
 4. `c2c prefs --json` (this machine, not this workspace).
@@ -263,13 +267,16 @@ Speak only of 临时地址 / 固定域名 / 登录 Cloudflare.
      Never record it as off. If creating the connector later says developer
      mode is required, open this page, enable it, save `--developer-mode`,
      and retry create — do not skip that recovery.
-   - 已有该 `connectorName`: `https://chatgpt.com/plugins` — Delete it (never
-     Reconnect). Then `goto` the 加插件 URL below.
-   - 还没有 / 刚删掉: `https://chatgpt.com/plugins#settings/Connectors?create-connector=true&redirectAfter=%2Fplugins`
+   - If the exact `connectorName` already exists and the saved public address
+     is healthy, reuse it. Do not delete, reinstall, or ask the user to
+     configure it again. Go directly to the saved Project/chat verification.
+   - Only when the connector is genuinely missing, unauthorized, or its
+     address has actually changed: `https://chatgpt.com/plugins#settings/Connectors?create-connector=true&redirectAfter=%2Fplugins`
      Operate ONLY on `connectorName` from step 3:
-      - If that exact name exists: Delete it, then create it again. Never
-        Reconnect, never edit-in-place, never open the old Server URL.
       - If it does not exist: create one with that exact name.
+      - If the address changed and repair is required: follow the explicit
+        reconnect-after-address-reclaim workflow; do not treat a scope change
+        as an address change.
       - Never rename, delete, or edit a connector that belongs to another workspace.
       - Description: `Securely connect ChatGPT to the current Codex workspace for planning and review.`
       - Server URL: the `mcpUrl` from step 3
@@ -282,8 +289,9 @@ Speak only of 临时地址 / 固定域名 / 登录 Cloudflare.
    in long-chat). Confirm Chat mode per **In-app browser** §7 (if it is Work,
    open a new Chat conversation instead). Send the boot prompt from
    `docs/protocol.md` §Boot Prompt, then (same chat) send:
-   `Use the "<connectorName>" connector: call workspace_info and read hello-style top-level file. Reply with the workspace name.`
-   Confirm the reply matches `workspaceName` (wait per **In-app browser** §8).
+   `Use the "<connectorName>" connector: call workspace_info and read hello-style top-level file. Reply with the workspace name and scope name.`
+   Confirm the connection name matches `workspaceName` and, when present, the
+   scope name matches the project folder (wait per **In-app browser** §8).
    Only then save the chat URL with `c2c session set` (see Conversation
    management). If the name does not match, do not save. markDeliverable.
 7. Report to the user exactly in this shape (no internals):
@@ -391,7 +399,9 @@ One ChatGPT Project per workspace. Mapping:
 2. Same workspace, a **new** Codex conversation → new ChatGPT chat from the
    collection page (`conversation.projectUrl`). Ignore `session.url` unless
    you already saved it earlier in THIS Codex thread.
-3. Different workspace → different Project and different connector.
+3. Different connection workspace → different Project and different connector.
+   A nested scoped project reuses its configured parent connection and saved
+   Project; do not create another connector just because its folder is nested.
 
 **Open a chat in this Codex thread**
 
@@ -405,7 +415,8 @@ One ChatGPT Project per workspace. Mapping:
   `c2c session set -w <ws> --mode project --project-url <collection> --url <chat> --connector-name "<connectorName>" --title "C2C <workspace name>"`.
   If this Codex thread is continuing a previous C2C task, send HANDOFF right
   after the boot prompt.
-- Else: **Bind Project** first.
+- Else: **Bind Project** first. Before asking, confirm that the CLI was run
+  against the actual project folder so ancestor connection state can be reused.
 
 **Update it**: same `c2c session set --task / --iteration / --state` as long-chat.
 
@@ -428,7 +439,7 @@ Project. Do **not** click the ChatGPT sidebar to create the Project
 1. Tell the user exactly this (fill in the workspace name):
 
 ```
-请在 ChatGPT 里新建一个项目，名字用「<workspaceName>」，记忆请选「仅限项目记忆」。
+请在 ChatGPT 里新建一个项目，名字用「<scopeName>」（连接名称是「<workspaceName>」），记忆请选「仅限项目记忆」。
 
 如果侧栏里看不到「项目」：把鼠标放在「聊天」上，点右边出现的三个点，选择「按项目整理」。
 
@@ -511,8 +522,8 @@ ChatGPT's replies are expected to be substantive (see step 3). Docs: `docs/proto
    or **Bind Project** if `projectReady` is false. On a NEW conversation
    confirm Chat mode (**In-app browser** §7), then send the boot prompt from
    `docs/protocol.md` §Boot Prompt and the workspace_info check (name the
-   exact `connectorName`). Confirm the reply names the current workspace
-   before saving the session URL. Do not use the browser to re-read code MCP
+   exact `connectorName`). Confirm the reply names the connection and current
+   scope before saving the session URL. Do not use the browser to re-read code MCP
    already provides. After sending a control message, wait per
    **In-app browser** §8.
 
