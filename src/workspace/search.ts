@@ -49,6 +49,7 @@ export function findRipgrep(): string | null {
         stdio: "ignore",
         timeout: 3000,
         windowsHide: true,
+        shell: false,
       });
       if (result.status === 0) {
         cachedRg = candidate;
@@ -81,7 +82,7 @@ async function searchWithRipgrep(
   args.push("--", opts.query, searchAbs);
 
   return new Promise((resolvePromise, reject) => {
-    const child = spawn(rgBin, args, { cwd: ws.root, windowsHide: true });
+    const child = spawn(rgBin, args, { cwd: ws.root, windowsHide: true, shell: false });
     const matches: SearchMatch[] = [];
     let truncated = false;
     const rl = readline.createInterface({ input: child.stdout });

@@ -34,6 +34,7 @@ export function findBinary(name: string): string | null {
       stdio: "ignore",
       timeout: 5000,
       windowsHide: true,
+      shell: false,
     });
     if (probe.status === 0 || probe.status === 1) return exe; // on PATH
   } catch {

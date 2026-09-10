@@ -85,6 +85,7 @@ export async function ensureBridge(workspaceRoot: string, opts: { port?: number 
       stdio: ["ignore", out, out],
       env: { ...process.env },
       windowsHide: true,
+      shell: false,
     }
   );
   child.unref();

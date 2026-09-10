@@ -48,6 +48,7 @@ describe("Windows background subprocess windowsHide: true (RED verification)", (
     const gitCall = spawnSyncCalls.find((c) => c.file === "git");
     expect(gitCall).toBeDefined();
     expect(gitCall?.options).toHaveProperty("windowsHide", true);
+    expect(gitCall?.options).toHaveProperty("shell", false);
   });
 
   it("2. findRipgrep in src/workspace/search.ts passes windowsHide: true for candidate probe", () => {
@@ -56,6 +57,7 @@ describe("Windows background subprocess windowsHide: true (RED verification)", (
     const probeCall = spawnSyncCalls.find((c) => Array.isArray(c.args) && c.args[0] === "--version");
     expect(probeCall).toBeDefined();
     expect(probeCall?.options).toHaveProperty("windowsHide", true);
+    expect(probeCall?.options).toHaveProperty("shell", false);
   });
 
   it("3. searchWithRipgrep in src/workspace/search.ts passes windowsHide: true for search process", async () => {
@@ -75,13 +77,22 @@ describe("Windows background subprocess windowsHide: true (RED verification)", (
     const searchCall = spawnCalls.find((c) => c.file === "fake-rg");
     expect(searchCall).toBeDefined();
     expect(searchCall?.options).toHaveProperty("windowsHide", true);
+    expect(searchCall?.options).toHaveProperty("shell", false);
   });
 
   it("4. findBinary in src/tunnel/detect.ts passes windowsHide: true for binary probe", () => {
-    findBinary("cloudflared");
+    const configuredPath = process.env.C2C_CLOUDFLARED_PATH;
+    delete process.env.C2C_CLOUDFLARED_PATH;
+    try {
+      findBinary("cloudflared");
+    } finally {
+      if (configuredPath === undefined) delete process.env.C2C_CLOUDFLARED_PATH;
+      else process.env.C2C_CLOUDFLARED_PATH = configuredPath;
+    }
     const probeCall = spawnSyncCalls.find((c) => Array.isArray(c.args) && c.args[0] === "--version");
     expect(probeCall).toBeDefined();
     expect(probeCall?.options).toHaveProperty("windowsHide", true);
+    expect(probeCall?.options).toHaveProperty("shell", false);
   });
 
   it("5. ProcessCloudflaredAccount.run in src/tunnel/named-provision.ts passes windowsHide: true", async () => {
@@ -94,6 +105,7 @@ describe("Windows background subprocess windowsHide: true (RED verification)", (
     const provisionCall = spawnSyncCalls.find((c) => c.file === "fake-cloudflared");
     expect(provisionCall).toBeDefined();
     expect(provisionCall?.options).toHaveProperty("windowsHide", true);
+    expect(provisionCall?.options).toHaveProperty("shell", false);
   });
 
   it("6. cloudflared login hides its child console", async () => {
@@ -105,6 +117,7 @@ describe("Windows background subprocess windowsHide: true (RED verification)", (
     );
     expect(loginCall).toBeDefined();
     expect(loginCall?.options).toHaveProperty("windowsHide", true);
+    expect(loginCall?.options).toHaveProperty("shell", false);
   });
 
   it("7. src/cli/index.ts update-check runGit passes windowsHide: true", () => {
@@ -113,11 +126,26 @@ describe("Windows background subprocess windowsHide: true (RED verification)", (
     const updateCheckSection = cliSource.slice(cliSource.indexOf("// ---------------------------------------------------------------- update-check"));
     const runGitSnippet = updateCheckSection.slice(0, updateCheckSection.indexOf("program"));
     expect(runGitSnippet).toContain("windowsHide: true");
+    expect(runGitSnippet).toContain("shell: false");
   });
 
   it("8. bin/c2c.js dev fallback hides the TypeScript runner console", () => {
     const launcherSource = fs.readFileSync(path.resolve("bin/c2c.js"), "utf8");
     const fallback = launcherSource.slice(launcherSource.indexOf("const result = spawnSync"));
     expect(fallback).toContain("windowsHide: true");
+    expect(fallback).toContain("shell: false");
+  });
+
+  it("9. bridge and tunnel launchers never delegate to a command shell", () => {
+    for (const relative of [
+      "src/process/daemon.ts",
+      "src/tunnel/cloudflared.ts",
+      "src/tunnel/cloudflared-named.ts",
+      "src/tunnel/named-provision.ts",
+    ]) {
+      const source = fs.readFileSync(path.resolve(relative), "utf8");
+      expect(source).toContain("windowsHide: true");
+      expect(source).toContain("shell: false");
+    }
   });
 });

@@ -874,6 +874,7 @@ function runGit(args: string[]): { ok: boolean; stdout: string } {
     timeout: 8000,
     env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
     windowsHide: true,
+    shell: false,
   });
   return { ok: result.status === 0, stdout: (result.stdout ?? "").trim() };
 }

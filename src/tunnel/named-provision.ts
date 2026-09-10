@@ -103,6 +103,7 @@ export class ProcessCloudflaredAccount implements CloudflaredAccount {
       const child = spawn(bin, ["tunnel", "login"], {
         stdio: ["ignore", "pipe", "pipe"],
         windowsHide: true,
+        shell: false,
       });
       let output = "";
       const collect = (chunk: Buffer): void => {
@@ -170,6 +171,7 @@ export class ProcessCloudflaredAccount implements CloudflaredAccount {
       encoding: "utf8",
       timeout: COMMAND_TIMEOUT_MS,
       windowsHide: true,
+      shell: false,
     });
     return {
       ok: result.status === 0,

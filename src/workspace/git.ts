@@ -15,6 +15,7 @@ export function runGit(root: string, args: string[]): GitCommandResult {
     maxBuffer: 64 * 1024 * 1024,
     timeout: 30_000,
     windowsHide: true,
+    shell: false,
   });
   return {
     ok: result.status === 0,

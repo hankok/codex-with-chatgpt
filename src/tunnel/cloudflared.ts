@@ -56,7 +56,7 @@ export interface CloudflaredQuickTunnelOptions {
   spawnImpl?: (
     command: string,
     args: string[],
-    options: { stdio: ["ignore", "pipe", "pipe"]; windowsHide: true }
+    options: { stdio: ["ignore", "pipe", "pipe"]; windowsHide: true; shell: false }
   ) => ChildProcess;
   fetchImpl?: (input: string | URL, init?: RequestInit) => Promise<Response>;
 }
@@ -119,7 +119,7 @@ export class CloudflaredQuickTunnel implements TunnelProvider {
         child = this.spawnImpl(
           bin,
           ["tunnel", "--url", `http://127.0.0.1:${localPort}`, "--no-autoupdate"],
-          { stdio: ["ignore", "pipe", "pipe"], windowsHide: true }
+          { stdio: ["ignore", "pipe", "pipe"], windowsHide: true, shell: false }
         );
       } catch (error) {
         reject(error);

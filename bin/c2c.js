@@ -15,6 +15,7 @@ if (existsSync(dist)) {
   const result = spawnSync(process.execPath, ["--import", "tsx/esm", entry, ...process.argv.slice(2)], {
     stdio: "inherit",
     windowsHide: true,
+    shell: false,
   });
   process.exit(result.status ?? 1);
 }
